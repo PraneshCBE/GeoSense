@@ -3,8 +3,10 @@ package com.projects.geosense
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.nfc.Tag
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -27,6 +29,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private lateinit var binding: ActivityMapsBinding
     private lateinit var geofencingClient: GeofencingClient
     private val GEOFENCE_RADIUS=200
+    private val LOCATION_PERMISSION_REQUEST_CODE = 123
     private val GEOFENCE_ID="SPIDER_MAN"
 
     private var geoFence: GeoFence? = null
@@ -67,28 +70,54 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
 
 
     }
-    private fun enableUserLocation(){
+    private fun enableUserLocation() {
+        val fineLocationPermission = android.Manifest.permission.ACCESS_FINE_LOCATION
+        val granted = PackageManager.PERMISSION_GRANTED
         if (ContextCompat.checkSelfPermission(this,android.Manifest.permission.ACCESS_FINE_LOCATION)==
             android.content.pm.PackageManager.PERMISSION_GRANTED){
             mMap.isMyLocationEnabled=true
         }
-        else{
-            //Ask for permission
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),0)
+        // Check and request foreground location permission
+        if (ContextCompat.checkSelfPermission(this, fineLocationPermission) != granted) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(fineLocationPermission),
+                0
+            )
+            return
+        }
+
+        // Check and request background location permission
+        val backgroundLocationPermission = android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, backgroundLocationPermission) != granted) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(backgroundLocationPermission),
+                    0
+                )
+                return
             }
         }
 
+        // If both permissions are granted, enable location on the map
+        mMap.isMyLocationEnabled = true
     }
-    public override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (grantResults.isNotEmpty() && grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED){
-            enableUserLocation()
-        }
-        else{
-            //Show a dialog that permission is not granted
+
+    private fun requestBackgroundLocationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val backgroundLocationPermission = android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            val granted = PackageManager.PERMISSION_GRANTED
+            if (ContextCompat.checkSelfPermission(this, backgroundLocationPermission) != granted) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(backgroundLocationPermission),
+                    LOCATION_PERMISSION_REQUEST_CODE
+                )
+            }
         }
     }
+
 
     override fun onMapLongClick(p0: LatLng) {
         addMarker(p0)
@@ -117,7 +146,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             return
         }
         if (pendingIntent != null) {
-            geofencingClient.addGeofences(geofencingRequest,pendingIntent)
+            geofencingClient.addGeofences(geofencingRequest,pendingIntent).addOnSuccessListener {
+                Log.d("GEOADD","pendingIntent $pendingIntent")
+                Toast.makeText(this,"Geofence added",Toast.LENGTH_SHORT).show()
+            } .addOnFailureListener { e ->
+                val errorMessage = geoFence?.getErrorString(e) ?: "Geofence not added"
+                Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
+            }
+
         }
 
     }
