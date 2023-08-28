@@ -1,8 +1,14 @@
 package com.projects.geosense
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Color
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.LocationServices
 
@@ -21,7 +27,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private lateinit var binding: ActivityMapsBinding
     private lateinit var geofencingClient: GeofencingClient
     private val GEOFENCE_RADIUS=200
+    private val GEOFENCE_ID="SPIDER_MAN"
 
+    private var geoFence: GeoFence? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -34,6 +42,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         mapFragment.getMapAsync(this)
 
         geofencingClient=LocationServices.getGeofencingClient(this)
+        geoFence= GeoFence(this)
     }
 
     /**
@@ -54,6 +63,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney))
         enableUserLocation()
         mMap.setOnMapLongClickListener(this)
+
 
 
     }
@@ -81,11 +91,36 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     }
 
     override fun onMapLongClick(p0: LatLng) {
-        print("Long click")
         addMarker(p0)
         addCircle(p0,GEOFENCE_RADIUS.toDouble())
+//        Toast.makeText(this,"Geofence added",Toast.LENGTH_SHORT).show()
+        addGeofence(p0,GEOFENCE_RADIUS.toDouble())
     }
+    private fun addGeofence(latLng: LatLng, radius: Double){
 
+        val geofence=geoFence!!.getGeofence(GEOFENCE_ID,latLng,radius,Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL or Geofence.GEOFENCE_TRANSITION_EXIT)
+
+        val geofencingRequest=geoFence!!.getGeofencingRequest(geofence)
+        val pendingIntent=geoFence!!.retPendingIntent()
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return
+        }
+        if (pendingIntent != null) {
+            geofencingClient.addGeofences(geofencingRequest,pendingIntent)
+        }
+
+    }
     private fun addMarker(latLng: LatLng){
         mMap.addMarker(MarkerOptions().position(latLng))
     }
@@ -93,8 +128,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         val circleOptions = com.google.android.gms.maps.model.CircleOptions()
             .center(latLng)
             .radius(radius)
-            .strokeColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
-            .fillColor(ContextCompat.getColor(this, android.R.color.holo_green_light))
+            .strokeColor(Color.argb(255, 0, 255, 0))
+            .fillColor(Color.argb(64, 255, 0, 0))
             .strokeWidth(3f)
         mMap.addCircle(circleOptions)
     }
