@@ -11,11 +11,12 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
 
-private const val TAG = "GeofenceBroadcastReceiv"
+private const val TAG = "GeofenceBroadcastReceiver"
 
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Toast.makeText(context, "Geofence Triggered", Toast.LENGTH_SHORT).show()
+
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         Log.d(TAG,"geofencingEvent $intent" )
         if (geofencingEvent != null) {
@@ -31,14 +32,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             Log.d(TAG, "Geofence Entered")
             Toast.makeText(context, "Geofence Entered", Toast.LENGTH_SHORT).show()
 
-
-            // Creating and sending Notification
-            val notificationManager = ContextCompat.getSystemService(
-                context!!,
-                NotificationManager::class.java
-            ) as NotificationManager
-
-            notificationManager.sendGeofenceEnteredNotification(context)
         }
         else if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
             Log.d(TAG, "Geofence Exited")

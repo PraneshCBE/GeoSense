@@ -1,6 +1,7 @@
 package com.projects.geosense
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.nfc.Tag
@@ -59,12 +60,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
      */
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
-
+        val userLocation=getUserLocation(this)
+        if (userLocation != null) {
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 16f))
+        }else{
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(37.422160, -122.084270), 16f))
+        }
         // Add a marker in Sydney and move the camera
-        val sydney = LatLng(-34.0, 151.0)
-        mMap.addMarker(MarkerOptions().position(sydney).title("Marker in Sydney"))
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney))
         enableUserLocation()
+        mMap.setOnMyLocationButtonClickListener {
+            val userLocation = mMap.cameraPosition.target
+            saveUserLocation(this, userLocation)
+            false // Return false to allow the default behavior (centering the camera)
+        }
         mMap.setOnMapLongClickListener(this)
 
 
@@ -103,21 +111,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         // If both permissions are granted, enable location on the map
         mMap.isMyLocationEnabled = true
     }
-
-    private fun requestBackgroundLocationPermission() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val backgroundLocationPermission = android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-            val granted = PackageManager.PERMISSION_GRANTED
-            if (ContextCompat.checkSelfPermission(this, backgroundLocationPermission) != granted) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(backgroundLocationPermission),
-                    LOCATION_PERMISSION_REQUEST_CODE
-                )
-            }
-        }
-    }
-
 
     override fun onMapLongClick(p0: LatLng) {
         addMarker(p0)
@@ -170,4 +163,21 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         mMap.addCircle(circleOptions)
     }
 
+    private fun saveUserLocation(context: Context, latLng: LatLng){
+        val sharedPreferences = context.getSharedPreferences("UserLocation", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putFloat("LATITUDE", latLng.latitude.toFloat())
+        editor.putFloat("LONGITUDE", latLng.longitude.toFloat())
+        editor.apply()
+        Log.d(getUserLocation(context).toString(),"saveUserLocation"  )
+    }
+    private fun getUserLocation(context: Context): LatLng? {
+        val sharedPreferences = context.getSharedPreferences("UserLocation", Context.MODE_PRIVATE)
+        val latitude = sharedPreferences.getFloat("LATITUDE", 0f)
+        val longitude = sharedPreferences.getFloat("LONGITUDE", 0f)
+        if (latitude != 0f && longitude != 0f) {
+            return LatLng(latitude.toDouble(), longitude.toDouble())
+        }
+        return null
+    }
 }
