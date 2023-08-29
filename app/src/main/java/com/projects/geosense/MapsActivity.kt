@@ -3,9 +3,11 @@ package com.projects.geosense
 import android.Manifest
 import android.app.AlertDialog
 import android.content.Context
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.nfc.Tag
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationSettingsRequest
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
@@ -13,9 +15,8 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
-import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofencingClient
-import com.google.android.gms.location.LocationServices
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.*
 
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -24,6 +25,7 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.tasks.Task
 import com.projects.geosense.databinding.ActivityMapsBinding
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickListener {
@@ -39,11 +41,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private var geofenceLatLng: Map<LatLng, Double>? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding = ActivityMapsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         val mapFragment = supportFragmentManager
             .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
@@ -81,36 +80,58 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private fun enableUserLocation() {
         val fineLocationPermission = android.Manifest.permission.ACCESS_FINE_LOCATION
         val granted = PackageManager.PERMISSION_GRANTED
-        if (ContextCompat.checkSelfPermission(this,android.Manifest.permission.ACCESS_FINE_LOCATION)==
-            android.content.pm.PackageManager.PERMISSION_GRANTED){
-            mMap.isMyLocationEnabled=true
-        }
+        val backgroundLocationPermission = android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+
         // Check and request foreground location permission
         if (ContextCompat.checkSelfPermission(this, fineLocationPermission) != granted) {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(fineLocationPermission),
-                0
+                LOCATION_PERMISSION_REQUEST_CODE
             )
-            return
         }
 
         // Check and request background location permission
-        val backgroundLocationPermission = android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             if (ContextCompat.checkSelfPermission(this, backgroundLocationPermission) != granted) {
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(backgroundLocationPermission),
-                    0
+                    LOCATION_PERMISSION_REQUEST_CODE
                 )
-                return
+            }
+        }
+
+        // Check if GPS is enabled
+        val locationRequest = LocationRequest.create()
+            .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+        val client = LocationServices.getSettingsClient(this)
+        val task: Task<LocationSettingsResponse> = client.checkLocationSettings(builder.build())
+
+        task.addOnSuccessListener {
+            // Location settings are satisfied, start your geofence monitoring here
+        }.addOnFailureListener { exception ->
+            if (exception is ResolvableApiException) {
+                try {
+                    // Show a dialog to prompt the user to enable location
+                    exception.startResolutionForResult(
+                        this@MapsActivity,
+                        LOCATION_PERMISSION_REQUEST_CODE
+                    )
+                } catch (sendEx: IntentSender.SendIntentException) {
+                    // say it is mandatory
+                    Toast.makeText(this, "Enabling location is mandatory", Toast.LENGTH_SHORT).show()
+
+                }
             }
         }
 
         // If both permissions are granted, enable location on the map
         mMap.isMyLocationEnabled = true
     }
+
     override fun onMapLongClick(p0: LatLng) {
         geofenceLatLng = retrieveGeofenceLatLng()
         if (geofenceLatLng != null) {
