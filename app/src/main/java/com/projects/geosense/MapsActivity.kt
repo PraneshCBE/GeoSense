@@ -1,6 +1,7 @@
 package com.projects.geosense
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -11,6 +12,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.LocationServices
@@ -34,6 +36,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private val GEOFENCE_ID="SPIDER_MAN"
 
     private var geoFence: GeoFence? = null
+    private var geofenceLatLng: Map<LatLng, Double>? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -47,17 +50,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
 
         geofencingClient=LocationServices.getGeofencingClient(this)
         geoFence= GeoFence(this)
-    }
+        geofenceLatLng = retrieveGeofenceLatLng()
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
+    }
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
         val userLocation=getUserLocation(this)
@@ -74,7 +69,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             false // Return false to allow the default behavior (centering the camera)
         }
         mMap.setOnMapLongClickListener(this)
-
+        if (geofenceLatLng != null) {
+            val geofenceLocation = geofenceLatLng!!.keys.first()
+            addMarker(geofenceLocation)
+            addCircle(geofenceLocation, geofenceLatLng!!.values.first())
+            addGeofence(geofenceLocation, geofenceLatLng!!.values.first())
+        }
 
 
     }
@@ -111,12 +111,30 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         // If both permissions are granted, enable location on the map
         mMap.isMyLocationEnabled = true
     }
-
     override fun onMapLongClick(p0: LatLng) {
-        addMarker(p0)
-        addCircle(p0,GEOFENCE_RADIUS.toDouble())
-//        Toast.makeText(this,"Geofence added",Toast.LENGTH_SHORT).show()
-        addGeofence(p0,GEOFENCE_RADIUS.toDouble())
+        geofenceLatLng = retrieveGeofenceLatLng()
+        if (geofenceLatLng != null) {
+            //add a confirmation for removing the existing Geofence
+            AlertDialog.Builder(this)
+                .setTitle("Remove Existing Geofence")
+                .setMessage("Are you sure you want to remove the existing geofence?")
+                .setPositiveButton("Yes") { dialog, which ->
+                    removeGeofence()
+                    mMap.clear()
+                    addMarker(p0)
+                    addCircle(p0, GEOFENCE_RADIUS.toDouble())
+                    addGeofence(p0, GEOFENCE_RADIUS.toDouble())
+                    saveGeofenceLatLng(p0, GEOFENCE_RADIUS.toDouble())
+                }
+                .setNegativeButton("No", null)
+                .show()
+        }
+        else {
+            addMarker(p0)
+            addCircle(p0, GEOFENCE_RADIUS.toDouble())
+            addGeofence(p0, GEOFENCE_RADIUS.toDouble())
+            saveGeofenceLatLng(p0, GEOFENCE_RADIUS.toDouble())
+        }
     }
     private fun addGeofence(latLng: LatLng, radius: Double){
 
@@ -150,6 +168,22 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         }
 
     }
+    private fun removeGeofence() {
+        val geofencingClient = LocationServices.getGeofencingClient(this)
+
+        val geofenceRequestIds = listOf(GEOFENCE_ID) // Replace with your existing geofence ID
+        geofencingClient.removeGeofences(geofenceRequestIds)
+            .addOnSuccessListener {
+                // Geofences removed successfully
+                geofenceLatLng = null // Update geofenceLatLng to null
+                Toast.makeText(this, "Existing geofence removed", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                // Failed to remove geofences
+                Toast.makeText(this, "Failed to remove existing geofence", Toast.LENGTH_SHORT).show()
+            }
+    }
+
     private fun addMarker(latLng: LatLng){
         mMap.addMarker(MarkerOptions().position(latLng))
     }
@@ -162,7 +196,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             .strokeWidth(3f)
         mMap.addCircle(circleOptions)
     }
-
     private fun saveUserLocation(context: Context, latLng: LatLng){
         val sharedPreferences = context.getSharedPreferences("UserLocation", Context.MODE_PRIVATE)
         val editor = sharedPreferences.edit()
@@ -179,5 +212,26 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             return LatLng(latitude.toDouble(), longitude.toDouble())
         }
         return null
+    }
+    private fun saveGeofenceLatLng(location: LatLng,radius: Double) {
+        // Save the geofence location using SharedPreferences or another persistence method
+        val sharedPreferences = getSharedPreferences("GeofencePrefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit {
+            putString("latitude", location.latitude.toString())
+            putString("longitude", location.longitude.toString())
+            putString("radius", radius.toString())
+        }
+    }
+    private fun retrieveGeofenceLatLng(): Map<LatLng, Double>? {
+        // Retrieve the stored geofence location from SharedPreferences
+        val sharedPreferences = getSharedPreferences("GeofencePrefs", Context.MODE_PRIVATE)
+        val latitude = sharedPreferences.getString("latitude", null)?.toDoubleOrNull()
+        val longitude = sharedPreferences.getString("longitude", null)?.toDoubleOrNull()
+        val radius = sharedPreferences.getString("radius", null)?.toDoubleOrNull()
+        return if (latitude != null && longitude != null) {
+            mapOf(LatLng(latitude, longitude) to radius!!)
+        } else {
+            null
+        }
     }
 }
