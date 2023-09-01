@@ -2,14 +2,15 @@ package com.projects.geosense
 
 import android.Manifest
 import android.app.AlertDialog
-import android.content.Context
-import android.content.IntentSender
+import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.location.Location
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationSettingsRequest
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
@@ -24,6 +25,7 @@ import com.google.android.gms.maps.GoogleMap.OnMapLongClickListener
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.Task
 import com.projects.geosense.databinding.ActivityMapsBinding
@@ -39,6 +41,51 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
 
     private var geoFence: GeoFence? = null
     private var geofenceLatLng: Map<LatLng, Double>? = null
+    private var TAG= MapsActivity::class.java.simpleName
+
+    private val handler = Handler()
+    private val locationSenderRunnable = object : Runnable {
+        override fun run() {
+            // Get the user's current location from gps of the device
+            val fusedLocationClient =
+                LocationServices.getFusedLocationProviderClient(this@MapsActivity)
+
+            if (ActivityCompat.checkSelfPermission(
+                    this@MapsActivity,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                // Permission already granted, get the user's location
+                fusedLocationClient.lastLocation
+                    .addOnSuccessListener { location: Location? ->
+                        if (location != null) {
+                            val latitude = location.latitude
+                            val longitude = location.longitude
+
+                            // Get username from shared preferences
+                            val sharedPreferences =
+                                getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+                            val username = sharedPreferences.getString("username", null)
+                            Log.d("username", username.toString())
+                            Log.d("userLocation", "Lat: $latitude, Long: $longitude")
+
+                            // Send userLocation to your server here
+                            // You can use a network library like Retrofit or Volley to make the HTTP request
+
+                            // Schedule the next execution after 1 minute (60,000 milliseconds)
+                            handler.postDelayed(this, 6000)
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        // Handle any errors that may occur while getting the location
+                        e.printStackTrace()
+
+                        // Schedule the next execution after 1 minute (60,000 milliseconds)
+                        handler.postDelayed(this, 6000)
+                    }
+            }
+        }
+        }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMapsBinding.inflate(layoutInflater)
@@ -51,6 +98,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         geoFence= GeoFence(this)
         geofenceLatLng = retrieveGeofenceLatLng()
 
+        handler.postDelayed(locationSenderRunnable, 6000)
+
     }
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
@@ -60,8 +109,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         }else{
             mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(37.422160, -122.084270), 16f))
         }
-        // Add a marker in Sydney and move the camera
         enableUserLocation()
+        setMapStyle(mMap)
         mMap.setOnMyLocationButtonClickListener {
             val userLocation = mMap.cameraPosition.target
             saveUserLocation(this, userLocation)
@@ -75,7 +124,20 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             addGeofence(geofenceLocation, geofenceLatLng!!.values.first())
         }
 
+    }
 
+    private fun setMapStyle(map:GoogleMap)
+    {
+        try {
+            val success=map.setMapStyle(MapStyleOptions.loadRawResourceStyle(this,R.raw.map_style))
+            if(!success)
+            {
+                Log.e(TAG,"Style parsing failed")
+            }
+        }catch (e:Exception)
+        {
+            Log.e(TAG,"Can't find style. Error: ",e)
+        }
     }
     private fun enableUserLocation() {
         val fineLocationPermission = android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -182,7 +244,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                 Log.d("GEOADD","pendingIntent $pendingIntent")
                 Toast.makeText(this,"Geofence added",Toast.LENGTH_SHORT).show()
             } .addOnFailureListener { e ->
-                val errorMessage = geoFence?.getErrorString(e) ?: "Geofence not added"
+                val errorMessage = "Permission Denied"
                 Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
             }
 
@@ -213,7 +275,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             .center(latLng)
             .radius(radius)
             .strokeColor(Color.argb(255, 0, 255, 0))
-            .fillColor(Color.argb(64, 255, 0, 0))
+            .fillColor(Color.argb(64, 0, 0, 255))
             .strokeWidth(3f)
         mMap.addCircle(circleOptions)
     }
