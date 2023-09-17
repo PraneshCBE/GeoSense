@@ -28,8 +28,10 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.Task
+import com.google.firebase.database.ktx.database
+import com.google.firebase.ktx.Firebase
 import com.projects.geosense.databinding.ActivityMapsBinding
-
+import com.projects.geosense.GeofenceBroadcastReceiver
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickListener {
 
     private lateinit var mMap: GoogleMap
@@ -68,10 +70,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                             val username = sharedPreferences.getString("username", null)
                             Log.d("username", username.toString())
                             Log.d("userLocation", "Lat: $latitude, Long: $longitude")
-
-                            // Send userLocation to your server here
-                            // You can use a network library like Retrofit or Volley to make the HTTP request
-
+                            SaveUserData(username, LatLng(latitude, longitude))
                             // Schedule the next execution after 1 minute (60,000 milliseconds)
                             handler.postDelayed(this, 6000)
                         }
@@ -99,7 +98,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         geofenceLatLng = retrieveGeofenceLatLng()
 
         handler.postDelayed(locationSenderRunnable, 6000)
+    }
+    private fun SaveUserData(username : String?,location: LatLng)
+    {
+        val database = Firebase.database
+        val dBRef = database.getReference("Users").child(username!!)
+        val user = UsersModel(username, "${location.latitude},${location.longitude}")
 
+        dBRef.setValue(user)
+            .addOnCompleteListener { Log.d("DB Store","Successfull") }
+            .addOnFailureListener{ Log.d("DB Store","Failed") }
     }
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
@@ -207,6 +215,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                     addMarker(p0)
                     addCircle(p0, GEOFENCE_RADIUS.toDouble())
                     addGeofence(p0, GEOFENCE_RADIUS.toDouble())
+                    GeofenceBroadcastReceiver.triggerCount=0
+
                     saveGeofenceLatLng(p0, GEOFENCE_RADIUS.toDouble())
                 }
                 .setNegativeButton("No", null)
@@ -217,6 +227,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             addCircle(p0, GEOFENCE_RADIUS.toDouble())
             addGeofence(p0, GEOFENCE_RADIUS.toDouble())
             saveGeofenceLatLng(p0, GEOFENCE_RADIUS.toDouble())
+            GeofenceBroadcastReceiver.triggerCount=0
         }
     }
     private fun addGeofence(latLng: LatLng, radius: Double){
