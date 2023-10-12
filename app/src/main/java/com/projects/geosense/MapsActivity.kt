@@ -6,19 +6,15 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationSettingsRequest
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
-import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
-
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.GoogleMap.OnMapLongClickListener
@@ -27,17 +23,18 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.gms.tasks.Task
 import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
 import com.projects.geosense.databinding.ActivityMapsBinding
-import com.projects.geosense.GeofenceBroadcastReceiver
+
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickListener {
 
     private lateinit var mMap: GoogleMap
     private lateinit var binding: ActivityMapsBinding
     private lateinit var geofencingClient: GeofencingClient
-    private val GEOFENCE_RADIUS=200
+
+
+    private var GEOFENCE_RADIUS=10.00
     private val LOCATION_PERMISSION_REQUEST_CODE = 123
     private val GEOFENCE_ID="SPIDER_MAN"
 
@@ -57,6 +54,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                     Manifest.permission.ACCESS_FINE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
+
                 // Permission already granted, get the user's location
                 fusedLocationClient.lastLocation
                     .addOnSuccessListener { location: Location? ->
@@ -71,6 +69,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                             Log.d("username", username.toString())
                             Log.d("userLocation", "Lat: $latitude, Long: $longitude")
                             SaveUserData(username, LatLng(latitude, longitude))
+                            enableUserLocation()
+                            viewSharedPreferences()
                             // Schedule the next execution after 1 minute (60,000 milliseconds)
                             handler.postDelayed(this, 6000)
                         }
@@ -96,8 +96,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         geofencingClient=LocationServices.getGeofencingClient(this)
         geoFence= GeoFence(this)
         geofenceLatLng = retrieveGeofenceLatLng()
-
+        val sharedPreferences= getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+        if(sharedPreferences.contains("radius"))
+        {
+            GEOFENCE_RADIUS=sharedPreferences.getString("radius",null)!!.toDouble()
+        }
         handler.postDelayed(locationSenderRunnable, 6000)
+
+
     }
     private fun SaveUserData(username : String?,location: LatLng)
     {
@@ -106,7 +112,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         val user = UsersModel(username, "${location.latitude},${location.longitude}")
 
         dBRef.setValue(user)
-            .addOnCompleteListener { Log.d("DB Store","Successfull") }
+            .addOnCompleteListener { Log.d("DB Store","Successfully") }
             .addOnFailureListener{ Log.d("DB Store","Failed") }
     }
     override fun onMapReady(googleMap: GoogleMap) {
@@ -128,7 +134,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         if (geofenceLatLng != null) {
             val geofenceLocation = geofenceLatLng!!.keys.first()
             addMarker(geofenceLocation)
-            addCircle(geofenceLocation, geofenceLatLng!!.values.first())
+            addCircleInit(geofenceLocation, GEOFENCE_RADIUS)
             addGeofence(geofenceLocation, geofenceLatLng!!.values.first())
         }
 
@@ -147,59 +153,37 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             Log.e(TAG,"Can't find style. Error: ",e)
         }
     }
-    private fun enableUserLocation() {
-        val fineLocationPermission = android.Manifest.permission.ACCESS_FINE_LOCATION
-        val granted = PackageManager.PERMISSION_GRANTED
-        val backgroundLocationPermission = android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
 
-        // Check and request foreground location permission
-        if (ContextCompat.checkSelfPermission(this, fineLocationPermission) != granted) {
+    private fun enableUserLocation() {
+        Log.d("enableUserLocation","enableUserLocation")
+        val fineLocationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarseLocationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+        val backgroundLocationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        if (fineLocationPermission == PackageManager.PERMISSION_GRANTED && coarseLocationPermission == PackageManager.PERMISSION_GRANTED) {
+            mMap.isMyLocationEnabled = true
+        } else {
+            // Request the permission
+            Log.d("enableUserLocation","Requesting Permission")
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(fineLocationPermission),
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
                 LOCATION_PERMISSION_REQUEST_CODE
             )
         }
-
-        // Check and request background location permission
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(this, backgroundLocationPermission) != granted) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(backgroundLocationPermission),
-                    LOCATION_PERMISSION_REQUEST_CODE
-                )
-            }
+        if (backgroundLocationPermission != PackageManager.PERMISSION_GRANTED) {
+            // Request the permission
+            Log.d("enableUserLocation","Requesting Permission")
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                ),
+                LOCATION_PERMISSION_REQUEST_CODE
+            )
         }
-
-        // Check if GPS is enabled
-        val locationRequest = LocationRequest.create()
-            .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
-        val builder = LocationSettingsRequest.Builder()
-            .addLocationRequest(locationRequest)
-        val client = LocationServices.getSettingsClient(this)
-        val task: Task<LocationSettingsResponse> = client.checkLocationSettings(builder.build())
-
-        task.addOnSuccessListener {
-            // Location settings are satisfied, start your geofence monitoring here
-        }.addOnFailureListener { exception ->
-            if (exception is ResolvableApiException) {
-                try {
-                    // Show a dialog to prompt the user to enable location
-                    exception.startResolutionForResult(
-                        this@MapsActivity,
-                        LOCATION_PERMISSION_REQUEST_CODE
-                    )
-                } catch (sendEx: IntentSender.SendIntentException) {
-                    // say it is mandatory
-                    Toast.makeText(this, "Enabling location is mandatory", Toast.LENGTH_SHORT).show()
-
-                }
-            }
-        }
-
-        // If both permissions are granted, enable location on the map
-        mMap.isMyLocationEnabled = true
     }
 
     override fun onMapLongClick(p0: LatLng) {
@@ -212,21 +196,36 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                 .setPositiveButton("Yes") { dialog, which ->
                     removeGeofence()
                     mMap.clear()
-                    addMarker(p0)
-                    addCircle(p0, GEOFENCE_RADIUS.toDouble())
-                    addGeofence(p0, GEOFENCE_RADIUS.toDouble())
-                    GeofenceBroadcastReceiver.triggerCount=0
-
-                    saveGeofenceLatLng(p0, GEOFENCE_RADIUS.toDouble())
+                    val dialogView = layoutInflater.inflate(R.layout.radius_input, null)
+                    val editText = dialogView.findViewById<android.widget.EditText>(R.id.editTextRadius)
+                    AlertDialog.Builder(this)
+                        .setTitle("Enter Radius")
+                        .setView(dialogView)
+                        .setCancelable(false)
+                        .setPositiveButton("OK"){dialog, which ->
+                            GEOFENCE_RADIUS=editText.text.toString().toDouble()
+                            val sharedPreferences= getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+                            val editor = sharedPreferences.edit()
+                            Log.d("GEOFENCE_RADIUS",GEOFENCE_RADIUS.toString())
+                            editor.putString("radius", GEOFENCE_RADIUS.toString())
+                            editor.apply()
+                            addMarker(p0)
+                            addCircle(p0)
+                            GeofenceBroadcastReceiver.triggerCount=0
+                            addGeofence(p0, GEOFENCE_RADIUS)
+                            saveGeofenceLatLng(p0, GEOFENCE_RADIUS)
+                        }
+                        .setNegativeButton("Cancel",null)
+                        .show()
                 }
                 .setNegativeButton("No", null)
                 .show()
         }
         else {
             addMarker(p0)
-            addCircle(p0, GEOFENCE_RADIUS.toDouble())
-            addGeofence(p0, GEOFENCE_RADIUS.toDouble())
-            saveGeofenceLatLng(p0, GEOFENCE_RADIUS.toDouble())
+            addCircle(p0)
+            addGeofence(p0, GEOFENCE_RADIUS)
+            saveGeofenceLatLng(p0, GEOFENCE_RADIUS)
             GeofenceBroadcastReceiver.triggerCount=0
         }
     }
@@ -243,12 +242,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         ) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            return
+
         }
         if (pendingIntent != null) {
             geofencingClient.addGeofences(geofencingRequest,pendingIntent).addOnSuccessListener {
@@ -281,7 +275,17 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private fun addMarker(latLng: LatLng){
         mMap.addMarker(MarkerOptions().position(latLng))
     }
-    private fun addCircle(latLng: LatLng, radius: Double) {
+    private fun addCircle(latLng: LatLng) {
+            val circleOptions = com.google.android.gms.maps.model.CircleOptions()
+                .center(latLng)
+                .radius(GEOFENCE_RADIUS)
+                .strokeColor(Color.argb(255, 0, 255, 0))
+                .fillColor(Color.argb(64, 0, 0, 255))
+                .strokeWidth(3f)
+            mMap.addCircle(circleOptions)
+
+    }
+    private fun addCircleInit(latLng: LatLng, radius: Double) {
         val circleOptions = com.google.android.gms.maps.model.CircleOptions()
             .center(latLng)
             .radius(radius)
@@ -327,5 +331,15 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         } else {
             null
         }
+    }
+
+    private fun viewSharedPreferences(){
+        val sharedPreferences = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+        val radius = sharedPreferences.getString("radius", null)
+        val username = sharedPreferences.getString("username", null)
+        val isLoggedIn = sharedPreferences.getBoolean("isLoggedIn", false)
+        val userLocation=getUserLocation(this)
+        Log.d("MyPrefs", "Radius: $radius, Username: $username, isLoggedIn: $isLoggedIn, userLocation: $userLocation")
+
     }
 }
