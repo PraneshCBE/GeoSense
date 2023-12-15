@@ -1,13 +1,14 @@
 {
   "project_info": {
-    "project_number": "514158165439",
-    "project_id": "geosense-397309",
-    "storage_bucket": "geosense-397309.appspot.com"
+    "project_number": "592898026656",
+    "firebase_url": "https://jovial-beach-397310-default-rtdb.firebaseio.com",
+    "project_id": "jovial-beach-397310",
+    "storage_bucket": "jovial-beach-397310.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:514158165439:android:ee639ebed8abfd289bb50a",
+        "mobilesdk_app_id": "1:592898026656:android:f0400b67d5b8d9df5badc5",
         "android_client_info": {
           "package_name": "com.projects.geosense"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCdMhbn8a09BvX1CzC7Rv-gviOH34-oMA8"
+          "current_key": "AIzaSyCdbjdStASs4wQ3wu6tiW_FNFSQ-adtY74"
         }
       ],
       "services": {

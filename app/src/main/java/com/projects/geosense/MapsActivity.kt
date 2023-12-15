@@ -6,14 +6,19 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
+import android.location.LocationManager
 import android.os.Bundle
 import android.os.Handler
+import android.provider.Settings
 import android.util.Log
+import android.view.View
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import com.google.android.gms.common.api.Status
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -23,6 +28,10 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.widget.AutocompleteSupportFragment
+import com.google.android.libraries.places.widget.listener.PlaceSelectionListener
 import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
 import com.projects.geosense.databinding.ActivityMapsBinding
@@ -32,7 +41,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
     private lateinit var mMap: GoogleMap
     private lateinit var binding: ActivityMapsBinding
     private lateinit var geofencingClient: GeofencingClient
-
+    private lateinit var autocompleteFragement: AutocompleteSupportFragment
+    private lateinit var floatingText: TextView
 
     private var GEOFENCE_RADIUS=10.00
     private val LOCATION_PERMISSION_REQUEST_CODE = 123
@@ -48,13 +58,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             // Get the user's current location from gps of the device
             val fusedLocationClient =
                 LocationServices.getFusedLocationProviderClient(this@MapsActivity)
-
             if (ActivityCompat.checkSelfPermission(
                     this@MapsActivity,
                     Manifest.permission.ACCESS_FINE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
-            ) {
 
+            ) {
                 // Permission already granted, get the user's location
                 fusedLocationClient.lastLocation
                     .addOnSuccessListener { location: Location? ->
@@ -83,8 +92,25 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
                         handler.postDelayed(this, 6000)
                     }
             }
+            else
+            {
+                // Permission not granted, request the permission
+                ActivityCompat.requestPermissions(
+                    this@MapsActivity,
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                    LOCATION_PERMISSION_REQUEST_CODE
+                )
+
+            }
+            if (!isGPSEnabled()) {
+                Toast.makeText(this@MapsActivity, "Please enable GPS", Toast.LENGTH_SHORT).show()
+                // GPS is not enabled, request the user to enable it
+                requestGPSEnabled()
+            }
+
         }
-        }
+
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMapsBinding.inflate(layoutInflater)
@@ -92,7 +118,22 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         val mapFragment = supportFragmentManager
             .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+        floatingText = findViewById(R.id.floatingText)
+        Places.initialize(applicationContext, getString(R.string.google_api));
+        autocompleteFragement= supportFragmentManager.findFragmentById(R.id.autocomplete_fragment)
+                as AutocompleteSupportFragment
+        autocompleteFragement.setPlaceFields(listOf(Place.Field.ID,Place.Field.NAME,Place.Field.LAT_LNG))
+        autocompleteFragement.setOnPlaceSelectedListener(object : PlaceSelectionListener {
+            override fun onPlaceSelected(place: Place) {
+                Log.d("Place", "Place: ${place.name}, ${place.id}, ${place.latLng}")
+                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(place.latLng, 20f))
 
+            }
+
+            override fun onError(status: Status) {
+                Log.d("Place", "An error occurred: $status")
+            }
+        })
         geofencingClient=LocationServices.getGeofencingClient(this)
         geoFence= GeoFence(this)
         geofenceLatLng = retrieveGeofenceLatLng()
@@ -101,30 +142,22 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
         {
             GEOFENCE_RADIUS=sharedPreferences.getString("radius",null)!!.toDouble()
         }
-        handler.postDelayed(locationSenderRunnable, 6000)
-
+       handler.postDelayed(locationSenderRunnable, 6000)
+//    val serviceIntent= Intent(this, LocationSender::class.java)
+//    startService(serviceIntent)
 
     }
-    private fun SaveUserData(username : String?,location: LatLng)
-    {
-        val database = Firebase.database
-        val dBRef = database.getReference("Users").child(username!!)
-        val user = UsersModel(username, "${location.latitude},${location.longitude}")
 
-        dBRef.setValue(user)
-            .addOnCompleteListener { Log.d("DB Store","Successfully") }
-            .addOnFailureListener{ Log.d("DB Store","Failed") }
-    }
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
         val userLocation=getUserLocation(this)
         if (userLocation != null) {
-            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 16f))
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 20f))
         }else{
             mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(37.422160, -122.084270), 16f))
         }
         enableUserLocation()
-        setMapStyle(mMap)
+//        setMapStyle(mMap)
         mMap.setOnMyLocationButtonClickListener {
             val userLocation = mMap.cameraPosition.target
             saveUserLocation(this, userLocation)
@@ -138,7 +171,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             addGeofence(geofenceLocation, geofenceLatLng!!.values.first())
         }
 
+
     }
+
 
     private fun setMapStyle(map:GoogleMap)
     {
@@ -153,7 +188,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             Log.e(TAG,"Can't find style. Error: ",e)
         }
     }
+    private fun isGPSEnabled(): Boolean {
+        val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+    }
 
+    // Function to prompt user to enable GPS
+    private fun requestGPSEnabled() {
+        val enableGPSIntent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+        startActivityForResult(enableGPSIntent, LOCATION_PERMISSION_REQUEST_CODE)
+    }
     private fun enableUserLocation() {
         Log.d("enableUserLocation","enableUserLocation")
         val fineLocationPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -229,12 +273,30 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             GeofenceBroadcastReceiver.triggerCount=0
         }
     }
+
+    private fun SaveUserData(username : String?,location: LatLng)
+    {
+        Log.d("DB Store","Saving User Data in DB")
+        val database = Firebase.database
+        Log.d("Database", database.toString())
+        val dBRef = database.getReference("Users").child(username!!)
+        Log.d("DB ref", dBRef.toString())
+        val fcmToken= getSharedPreferences("MyPrefs", Context.MODE_PRIVATE).getString("fcmToken", null)
+        val user = UsersModel(username, "${location.latitude},${location.longitude}", fcmToken)
+
+
+        dBRef.setValue(user)
+            .addOnCompleteListener { Log.d("DB Store","Successfully") }
+            .addOnFailureListener{ Log.d("DB Store","Failed") }
+    }
+
     private fun addGeofence(latLng: LatLng, radius: Double){
 
         val geofence=geoFence!!.getGeofence(GEOFENCE_ID,latLng,radius,Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL or Geofence.GEOFENCE_TRANSITION_EXIT)
 
         val geofencingRequest=geoFence!!.getGeofencingRequest(geofence)
         val pendingIntent=geoFence!!.retPendingIntent()
+        floatingText.visibility = View.GONE
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -251,6 +313,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, OnMapLongClickList
             } .addOnFailureListener { e ->
                 val errorMessage = "Permission Denied"
                 Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
+
             }
 
         }

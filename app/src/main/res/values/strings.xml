@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">GeoSense</string>
     <string name="title_activity_maps">MapsActivity</string>
+    <string name="google_api" translatable="false">AIzaSyBBNTVOafNR4RyVnikINYJfG_9-Duv_qds</string>
 </resources>
